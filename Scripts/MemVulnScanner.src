@@ -1,0 +1,127 @@
+// Initial checks
+if params.len != 2 or params[0] == "-h" or params[0] == "--help" then 
+	exit("<b>Usage: "+program_path.split("/")[-1]+" [ip_address] [port]</b>")
+end if
+
+metaxploit = include_lib("/lib/metaxploit.so")
+
+if not metaxploit then
+    metaxploit = include_lib(current_path + "/metaxploit.so")
+end if
+
+if not metaxploit then 
+	exit("Error: Can't find metaxploit library in the /lib path or the current folder")
+end if
+
+address = params[0]
+port = params[1].to_int
+net_session = metaxploit.net_use( address, port )
+
+if not net_session then 
+	exit("Error: can't connect to net session")
+end if
+// End Initial Checks
+
+
+metaLib = net_session.dump_lib
+
+
+// Fancy Header
+header = "| Target_IP | Service | Version | Port |"
+
+col1 = char(10) + "| " + address + " | "
+col2 = col1 + metaLib.lib_name + " | "
+col3 = col2 + metaLib.version + " | "
+col4 = col3 + port + " |"
+
+header = header + col4
+
+print("")
+print("")
+print(" __________________________________________________")
+print(format_columns(header))
+print(" --------------------------------------------------")
+print("")
+// End Fancy Header
+
+
+print("Scanning Target...")
+
+vuln_mem_addys_list = metaxploit.scan(metaLib)
+
+print("")
+print("==========> VULNERABLE MEMORY ADDRESSES DETECTED! <==========")
+print(vuln_mem_addys_list)
+print("")
+print("")
+
+
+myPC = get_shell.host_computer
+myPC.create_folder(home_dir, "/VulnDumps" + address)
+
+
+i = 0
+
+for e in vuln_mem_addys_list
+	
+	i = i + 1
+	
+	vulnsOutput = metaxploit.scan_address(metaLib, e)
+
+	
+	// Continue The Fancy
+	outputHeader = "| Analyzing Address: " + e + " | " + i + " of " + vuln_mem_addys_list.len + " |"
+	print(" ________________________________________________")
+	print(format_columns(outputHeader))
+	print(" ------------------------------------------------")
+
+	
+	outputPath = home_dir + "/v" + address + "p" + port
+
+	currentFileName = e + ".txt"
+
+	myPC.touch(outputPath, currentFileName)
+	
+	vulnDump = myPC.File(outputPath + "/" + currentFileName)
+
+	// write memaddress to top of file, then write output
+	vulnsOutput = "Memory Address: " + e + char(10) + char(10) + vulnsOutput
+
+	vulnDump.set_content(vulnsOutput)
+	
+end for
+
+
+line1 = "Target: " + address + " " + port + char(10)
+line2 = "Service: " + metaLib.lib_name + " " + metaLib.version + char(10) + char(10)
+line3 = "Vulnerable Memory Addresses: " + char(10) + char(10)
+line4 = vuln_mem_addys_list
+
+infoOutput = line1 + line2 + line3 + line4
+
+myPC.touch(outputPath, "info.txt")
+info = myPC.File(outputPath + "/" + "info.txt")
+info.set_content(infoOutput)
+
+
+print("")
+print("")
+print("Output files located in: " + outputPath)
+
+
+// Example of executing attack
+// letItFlow = metaLib.overflow("0x50BB2F20", "reedyn_ltreetreebitsbl")
+// print(typeof(letItFlow))
+
+
+// TODO - 
+// 		after creating file, parse it line by line for vulnerable string (between "<b>" tags)
+// 			as well as each requirement for that vuln (lines start with "*")
+// 
+// 		overwrite original file with condensed info for later use
+// 			maybe add each req to object like:
+//				key=memaddress, value= [array of requirement strings]
+// 
+// 		In next pass injest these objects to check if reqs met, if so launch that attack or -
+// 			add that to a list of greenlight targets for more specific scripts to attack if -
+//				the size of this gets to wild
